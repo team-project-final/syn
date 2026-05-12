@@ -1,0 +1,71 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    # Skip for frontend and shared repos
+    if: >-
+      github.repository != 'team-project-final/synapse-frontend' &&
+      github.repository != 'team-project-final/synapse-shared'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Check ECR_REGISTRY secret
+        id: ecr-check
+        run: |
+          if [ -z "${{ secrets.ECR_REGISTRY }}" ]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::ECR_REGISTRY secret is not set. Skipping Docker build and deploy."
+          else
+            echo "available=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Determine image metadata
+        if: steps.ecr-check.outputs.available == 'true'
+        id: meta
+        run: |
+          SERVICE="${GITHUB_REPOSITORY##*/}"
+          TAG="${GITHUB_SHA::8}"
+          echo "image=${{ secrets.ECR_REGISTRY }}/${SERVICE}:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "service=${SERVICE}" >> "$GITHUB_OUTPUT"
+          echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+
+      - name: Build and push Docker image
+        if: steps.ecr-check.outputs.available == 'true'
+        run: |
+          docker build -t "${{ steps.meta.outputs.image }}" .
+          docker push "${{ steps.meta.outputs.image }}"
+
+      - name: Update gitops repo
+        if: steps.ecr-check.outputs.available == 'true'
+        run: |
+          git clone --depth 1 \
+            "https://x-access-token:${{ secrets.GITOPS_TOKEN }}@github.com/team-project-final/synapse-gitops.git" \
+            _gitops
+          cd _gitops
+
+          KUSTOMIZATION="apps/${{ steps.meta.outputs.service }}/overlays/dev/kustomization.yaml"
+          if [ ! -f "$KUSTOMIZATION" ]; then
+            echo "::warning::Kustomization not found: $KUSTOMIZATION"
+            exit 0
+          fi
+
+          yq -i '.images[0].newTag = "${{ steps.meta.outputs.tag }}"' "$KUSTOMIZATION"
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No gitops changes."
+            exit 0
+          fi
+          git commit -m "deploy: bump ${{ steps.meta.outputs.service }} to ${{ steps.meta.outputs.tag }}"
+          git push

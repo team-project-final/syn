@@ -1,0 +1,59 @@
+name: Mirror to synapse-mirror
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Checkout synapse-mirror
+        uses: actions/checkout@v4
+        with:
+          repository: team-project-final/synapse-mirror
+          token: ${{ secrets.MIRROR_TOKEN }}
+          path: _mirror
+          fetch-depth: 0
+
+      - name: Determine service name
+        id: meta
+        run: echo "service=${GITHUB_REPOSITORY##*/}" >> "$GITHUB_OUTPUT"
+
+      - name: Rsync to mirror
+        run: |
+          SERVICE_DIR="_mirror/services/${{ steps.meta.outputs.service }}"
+          mkdir -p "$SERVICE_DIR"
+          rsync -av --delete \
+            --exclude='.git' \
+            --exclude='node_modules' \
+            --exclude='build' \
+            --exclude='target' \
+            --exclude='.gradle' \
+            --exclude='__pycache__' \
+            --exclude='.venv' \
+            --exclude='.env*' \
+            --exclude='*.key' \
+            --exclude='*.pem' \
+            ./ "$SERVICE_DIR/"
+
+      - name: Commit and push if changes
+        working-directory: _mirror
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "No changes to mirror."
+            exit 0
+          fi
+          git add -A
+          git commit -m "mirror: sync ${{ steps.meta.outputs.service }} @ ${GITHUB_SHA::8}"
+          git push

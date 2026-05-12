@@ -1,0 +1,30 @@
+name: CI — Java (Gradle)
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: gradle
+
+      - name: Build
+        run: ./gradlew clean build --no-daemon
+
+      - name: Modulith verify
+        run: ./gradlew test --tests '*ModuleStructureTest' --no-daemon
