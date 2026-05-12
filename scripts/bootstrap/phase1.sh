@@ -399,10 +399,12 @@ setup_one_protection() {
 PJSON
   )
 
-  gh api -X PUT "repos/$ORG/$name/branches/main/protection" \
-    --input - <<< "$payload" >/dev/null
-
-  log_ok "브랜치 보호 완료: $name"
+  if gh api -X PUT "repos/$ORG/$name/branches/main/protection" \
+    --input - <<< "$payload" >/dev/null 2>&1; then
+    log_ok "브랜치 보호 완료: $name"
+  else
+    log_warn "브랜치 보호 실패 (private repo on free plan?): $name — 건너뜀"
+  fi
 }
 
 ###############################################################################
