@@ -34,6 +34,7 @@ jobs:
           mkdir -p "$SERVICE_DIR"
           rsync -av --delete \
             --exclude='.git' \
+            --exclude='_mirror' \
             --exclude='node_modules' \
             --exclude='build' \
             --exclude='target' \
@@ -50,10 +51,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          if git diff --quiet && git diff --cached --quiet; then
+          git add -A
+          if git diff --cached --quiet; then
             echo "No changes to mirror."
             exit 0
           fi
-          git add -A
           git commit -m "mirror: sync ${{ steps.meta.outputs.service }} @ ${GITHUB_SHA::8}"
           git push

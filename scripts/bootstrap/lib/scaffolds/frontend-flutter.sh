@@ -14,6 +14,7 @@ frontend_init() {
   # --- flutter create ---
   flutter create \
     --org com.synapse \
+    --project-name synapse_frontend \
     --platforms web,android,ios \
     --overwrite \
     "$repo_dir"
